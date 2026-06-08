@@ -2,40 +2,63 @@ services:
   zabbix-db:
     image: mysql:8.0
     command: --log-bin-trust-function-creators=1
+    restart: unless-stopped
     environment:
-      MYSQL_DATABASE: zabbix
-      MYSQL_USER: zabbix
-      MYSQL_PASSWORD: zabbix_pwd
-      MYSQL_ROOT_PASSWORD: root_pwd
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
       - zabbix-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   zabbix-server:
     image: zabbix/zabbix-server-mysql:latest
+    restart: unless-stopped
     environment:
       DB_SERVER_HOST: zabbix-db
-      MYSQL_DATABASE: zabbix
-      MYSQL_USER: zabbix
-      MYSQL_PASSWORD: zabbix_pwd
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     depends_on:
-      - zabbix-db
+      zabbix-db:
+        condition: service_healthy
     ports:
       - "10051:10051"
 
   zabbix-web:
     image: zabbix/zabbix-web-nginx-mysql:latest
+    restart: unless-stopped
     environment:
       DB_SERVER_HOST: zabbix-db
-      MYSQL_DATABASE: zabbix
-      MYSQL_USER: zabbix
-      MYSQL_PASSWORD: zabbix_pwd
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       ZBX_SERVER_HOST: zabbix-server
       PHP_TZ: Europe/Moscow
     depends_on:
-      - zabbix-db
-      - zabbix-server
+      zabbix-db:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_started
     ports:
       - "8090:8080"
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent:latest
+    restart: unless-stopped
+    environment:
+      ZBX_HOSTNAME: linux-host
+      ZBX_SERVER_HOST: zabbix-server
+    depends_on:
+      - zabbix-server
+    network_mode: host
+    pid: host
+    privileged: true
 
 volumes:
   zabbix-db:
